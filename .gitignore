@@ -1,0 +1,8 @@
+# dirs
+.cache/
+build/
+filesystem/
+
+# files
+compile_commands.json
+*.z64
