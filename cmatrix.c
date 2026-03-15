@@ -10,7 +10,7 @@ static const unsigned int box_height =
 		(unsigned int)((float)SCREEN_HEIGHT * .8f);
 static const unsigned int     par_x0	 = (SCREEN_WIDTH - box_width) / 2;
 static const unsigned int     par_y0	 = (SCREEN_HEIGHT - box_height) / 2;
-static const rdpq_textparms_t par_params = { .align  = ALIGN_LEFT,
+static const rdpq_textparms_t par_params = { .align  = ALIGN_CENTER,
 					     .valign = VALIGN_CENTER,
 					     .width  = box_width,
 					     .height = box_height,
@@ -30,12 +30,12 @@ static const unsigned int box_x1 = (SCREEN_WIDTH + box_width) / 2;
 static const unsigned int box_y1 = (SCREEN_HEIGHT + box_height) / 2;
 
 static const char text[] =
-		"Two $02households$01, both alike in dignity,\n"
-		"In $02fair Verona$01, where we lay our scene,\n"
-		"From ancient grudge break to new $02mutiny$01,\n"
-		"Where $02civil blood$01 makes civil hands unclean.\n"
-		"From forth the fatal loins of these $02two foes$01\n"
-		"A pair of $02star-cross'd lovers$01 take their life;\n";
+		"Two households, both alike in dignity,\n"
+		"In fair Verona, where we lay our scene,\n"
+		"From ancient grudge break to new mutiny,\n"
+		"Where civil blood makes civil hands unclean.\n"
+		"From forth the fatal loins of these two foes\n"
+		"A pair of star-cross'd lovers take their life;\n";
 static int text_len = sizeof(text) - 1;
 
 static rdpq_font_t *fnt1 = NULL;
