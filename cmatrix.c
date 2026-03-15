@@ -3,21 +3,26 @@
 #define SCREEN_WIDTH  320u
 #define SCREEN_HEIGHT 240u
 
-#define FONT_JETBRAINS_MONO 1
+#define FONT_JETBRAINS_MONO_BOLD 1
 
-static const rdpq_textparms_t text_params = { .align  = ALIGN_CENTER,
-					      .valign = VALIGN_CENTER,
-					      .width  = SCREEN_WIDTH,
-					      .height = SCREEN_HEIGHT,
-					      .wrap   = WRAP_WORD };
+static const unsigned int text_pad_x = SCREEN_WIDTH / 4;
+static const unsigned int text_pad_y = SCREEN_WIDTH / 4;
+
+static const rdpq_textparms_t text_params = {
+	.align	= ALIGN_CENTER,
+	.valign = VALIGN_CENTER,
+	.width	= SCREEN_WIDTH - text_pad_x,
+	.height = SCREEN_HEIGHT - text_pad_y,
+	.wrap	= WRAP_WORD
+};
 
 static const char text[] =
-		"Two households, both alike in dignity,\n"
-		"In fair Verona, where we lay our scene,\n"
-		"From ancient grudge break to new mutiny,\n"
-		"Where civil blood makes civil hands unclean.\n"
-		"From forth the fatal loins of these two foes\n"
-		"A pair of star-cross'd lovers take their life;\n";
+		"Two households, both alike in dignity, in "
+		"fair Verona, where we lay our scene, from "
+		"ancient grudge break to new mutiny, where "
+		"civil blood makes civil hands unclean. From "
+		"forth the fatal loins of these two foes a "
+		"pair of star-cross'd lovers take their life.";
 static int text_len = sizeof(text) - 1;
 
 static rdpq_font_t	     *fnt	= NULL;
@@ -43,9 +48,9 @@ int main(void)
 	joypad_init();
 
 	/* Load, configure and register fonts */
-	fnt = rdpq_font_load("rom:/Pacifico.font64");
+	fnt = rdpq_font_load("rom:/jetbrains_mono_bold.font64");
 	rdpq_font_style(fnt, 0, &fnt_style);
-	rdpq_text_register_font(FONT_JETBRAINS_MONO, fnt);
+	rdpq_text_register_font(FONT_JETBRAINS_MONO_BOLD, fnt);
 
 	/* Main loop */
 	for (; !start_pressed;) {
@@ -59,10 +64,10 @@ int main(void)
 		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
 		par = rdpq_paragraph_build(&text_params,
-					   FONT_JETBRAINS_MONO,
+					   FONT_JETBRAINS_MONO_BOLD,
 					   text,
 					   &text_len);
-		rdpq_paragraph_render(par, 0, 0);
+		rdpq_paragraph_render(par, text_pad_x / 2, text_pad_y / 2);
 		rdpq_paragraph_free(par);
 
 		rdpq_set_mode_standard();
@@ -78,7 +83,7 @@ int main(void)
 	}
 
 	/* Terminate */
-	rdpq_text_unregister_font(FONT_JETBRAINS_MONO);
+	rdpq_text_unregister_font(FONT_JETBRAINS_MONO_BOLD);
 	rdpq_font_free(fnt);
 	joypad_close();
 	rdpq_close();
