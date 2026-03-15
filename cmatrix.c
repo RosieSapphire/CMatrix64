@@ -3,31 +3,13 @@
 #define SCREEN_WIDTH  320u
 #define SCREEN_HEIGHT 240u
 
-enum { FONT_PACIFICO = 1, FONT_ZEROVELOCITY };
+#define FONT_JETBRAINS_MONO 1
 
-static const unsigned int box_width = (unsigned int)((float)SCREEN_WIDTH * .8f);
-static const unsigned int box_height =
-		(unsigned int)((float)SCREEN_HEIGHT * .8f);
-static const unsigned int     par_x0	 = (SCREEN_WIDTH - box_width) / 2;
-static const unsigned int     par_y0	 = (SCREEN_HEIGHT - box_height) / 2;
-static const rdpq_textparms_t par_params = { .align  = ALIGN_CENTER,
-					     .valign = VALIGN_CENTER,
-					     .width  = box_width,
-					     .height = box_height,
-					     .wrap   = WRAP_WORD };
-
-static const rdpq_fontstyle_t fnt1_style = {
-	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
-};
-
-static const rdpq_fontstyle_t fnt2_style = {
-	.color = RGBA32(0x82, 0x30, 0x38, 0xFF)
-};
-
-static const unsigned int box_x0 = (SCREEN_WIDTH - box_width) / 2;
-static const unsigned int box_y0 = (SCREEN_HEIGHT - box_height) / 2;
-static const unsigned int box_x1 = (SCREEN_WIDTH + box_width) / 2;
-static const unsigned int box_y1 = (SCREEN_HEIGHT + box_height) / 2;
+static const rdpq_textparms_t text_params = { .align  = ALIGN_CENTER,
+					      .valign = VALIGN_CENTER,
+					      .width  = SCREEN_WIDTH,
+					      .height = SCREEN_HEIGHT,
+					      .wrap   = WRAP_WORD };
 
 static const char text[] =
 		"Two households, both alike in dignity,\n"
@@ -38,10 +20,10 @@ static const char text[] =
 		"A pair of star-cross'd lovers take their life;\n";
 static int text_len = sizeof(text) - 1;
 
-static rdpq_font_t *fnt1 = NULL;
-static rdpq_font_t *fnt2 = NULL;
-
-static unsigned long frame = 0ul;
+static rdpq_font_t	     *fnt	= NULL;
+static const rdpq_fontstyle_t fnt_style = {
+	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
+};
 
 int main(void)
 {
@@ -58,30 +40,29 @@ int main(void)
 		     GAMMA_NONE,
 		     FILTERS_RESAMPLE);
 	rdpq_init();
+	joypad_init();
 
 	/* Load, configure and register fonts */
-	fnt1 = rdpq_font_load("rom:/Pacifico.font64");
-	fnt2 = rdpq_font_load("rom:/FerriteCoreDX.font64");
-	rdpq_font_style(fnt1, 0, &fnt1_style);
-	rdpq_font_style(fnt2, 0, &fnt2_style);
-	rdpq_text_register_font(FONT_PACIFICO, fnt1);
-	rdpq_text_register_font(FONT_ZEROVELOCITY, fnt2);
+	fnt = rdpq_font_load("rom:/Pacifico.font64");
+	rdpq_font_style(fnt, 0, &fnt_style);
+	rdpq_text_register_font(FONT_JETBRAINS_MONO, fnt);
 
 	/* Main loop */
-	for (frame = 0ul; !start_pressed; ++frame) {
+	for (; !start_pressed;) {
 		rdpq_paragraph_t *par;
+		joypad_buttons_t  btn_down;
 
 		/* Render */
 		rdpq_attach_clear(display_get(), NULL);
 
-		rdpq_set_mode_fill(RGBA32(0x30, 0x63, 0x8E, 0xFF));
-		rdpq_fill_rectangle(box_x0, box_y0, box_x1, box_y1);
+		rdpq_set_mode_fill(RGBA16(0x3, 0x6, 0x9, 0x1F));
+		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-		par = rdpq_paragraph_build(&par_params,
-					   FONT_PACIFICO,
+		par = rdpq_paragraph_build(&text_params,
+					   FONT_JETBRAINS_MONO,
 					   text,
 					   &text_len);
-		rdpq_paragraph_render(par, par_x0, par_y0);
+		rdpq_paragraph_render(par, 0, 0);
 		rdpq_paragraph_free(par);
 
 		rdpq_set_mode_standard();
@@ -89,15 +70,17 @@ int main(void)
 		rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
 
 		rdpq_detach_show();
+
+		/* Update */
+		joypad_poll();
+		btn_down      = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+		start_pressed = btn_down.start;
 	}
 
 	/* Terminate */
-	rdpq_text_unregister_font(FONT_ZEROVELOCITY);
-	rdpq_text_unregister_font(FONT_PACIFICO);
-
-	rdpq_font_free(fnt2);
-	rdpq_font_free(fnt1);
-
+	rdpq_text_unregister_font(FONT_JETBRAINS_MONO);
+	rdpq_font_free(fnt);
+	joypad_close();
 	rdpq_close();
 	display_close();
 }
