@@ -31,7 +31,7 @@ static const rdpq_fontstyle_t fnt_style = {
 static float time_accum = 0.f;
 
 #if 0
-static void _text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
+static void text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
 {
 	memcpy(buf,
 	       (const char *)"+---------------------------------------+"
@@ -52,18 +52,26 @@ static void _text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
 }
 #endif
 
-static void _text_buf_fill_random_alnum(char buf[TEXT_DIM_X * TEXT_DIM_Y])
+struct stream {
+	unsigned int length;
+	signed int   progress;
+	char	     chars[TEXT_DIM_Y];
+};
+
+static struct stream streams[TEXT_DIM_X];
+
+static void buf_fill_random(char *buf, const size_t buf_sz)
 {
-	unsigned int i;
+	size_t i;
 
 	/* Generate random array */
-	getentropy(buf, TEXT_DIM_X * TEXT_DIM_Y);
+	getentropy(buf, buf_sz);
 
 	/* Correct it */
-	for (i = 0; i < TEXT_DIM_X * TEXT_DIM_Y; ++i) {
+	for (i = 0; i < buf_sz; ++i) {
 		char c;
 
-retry:
+	buf_fill_random_retry:
 		/* Generate a random number */
 		c = getentropy32() & 0xFF;
 
@@ -78,10 +86,83 @@ retry:
 		 * printing in Libdragon, so we're excluding those.
 		 */
 		if (c == '$' || c == '^')
-			goto retry;
+			goto buf_fill_random_retry;
 
 		buf[i] = c;
 	}
+}
+
+static void stream_init(struct stream *s)
+{
+	do {
+		s->length = getentropy32() % TEXT_DIM_Y;
+	} while (s->length < 3 || s->length > TEXT_DIM_Y - 2);
+	s->progress = -(signed int)s->length;
+	buf_fill_random(s->chars, TEXT_DIM_Y);
+}
+
+static __inline void streams_array_randomize(struct stream *arr,
+					     const size_t   cnt)
+{
+	size_t i;
+
+	for (i = 0; i < cnt; ++i)
+		stream_init(arr + i);
+}
+
+static void stream_update(struct stream *s)
+{
+	/*
+	 * Update progress, and if it's not over
+	 * the limit, we're done for this frame.
+	 */
+	if (++s->progress < (signed int)TEXT_DIM_Y)
+		return;
+
+	/* Randomly generate a new stream, as it has reached its end */
+	stream_init(s);
+}
+
+static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
+			       const struct stream *s)
+{
+	unsigned int l;
+	signed int   i, p, pf, e;
+
+	assertf(s->length <= TEXT_DIM_Y,
+		"Stream length is too high (is %u; max is %u)\n",
+		s->length,
+		TEXT_DIM_Y);
+	assertf(s->progress < (signed int)TEXT_DIM_Y,
+		"Stream has already left screen (progress = %d)",
+		s->progress);
+
+	/* Get clamped length */
+	p = s->progress;
+	l = s->length;
+	if (p + (signed int)l >= TEXT_DIM_Y)
+		l = TEXT_DIM_Y - 1;
+
+	/* Get clamped end */
+	e = p + l;
+	if (e > TEXT_DIM_Y)
+		e = TEXT_DIM_Y;
+
+	/* Padding */
+	if (p - 1 >= 0)
+		buf[(p - 1) * TEXT_DIM_X + 3] = ' ';
+
+	/* Line itself */
+	pf = (p < 0) ? 0 : p;
+	for (i = pf; i < e; ++i)
+		buf[i * TEXT_DIM_X + 3] = s->chars[i];
+
+	/*
+	 * Shitty retarded fucking hack to clear the last
+	 * character of a row when a new one starts
+	 */
+	if (p < 0)
+		buf[(TEXT_DIM_Y - 1) * TEXT_DIM_X + 3] = ' ';
 }
 
 int main(void)
@@ -103,6 +184,10 @@ int main(void)
 	fnt = rdpq_font_load("rom:/jetbrains_mono_bold.font64");
 	rdpq_font_style(fnt, 0, &fnt_style);
 	rdpq_text_register_font(FONT_JETBRAINS_MONO_BOLD, fnt);
+
+	memset(text_buf, ' ', sizeof(text_buf));
+
+	streams_array_randomize(streams, sizeof(streams) / sizeof(*streams));
 
 	/* Main loop */
 	for (;;) {
@@ -143,9 +228,10 @@ int main(void)
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
-
-			_text_buf_fill_random_alnum(text_buf);
+			stream_update(streams + 0);
 		}
+
+		stream_to_text_buf(text_buf, streams + 0);
 	}
 
 	/* Terminate */
