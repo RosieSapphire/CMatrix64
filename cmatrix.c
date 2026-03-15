@@ -5,38 +5,50 @@
 
 #define FONT_JETBRAINS_MONO_BOLD 1
 
-#define TICKRATE 10u
+#define TICKRATE 64u
 
 static const float tickrate_sec = 1.f / (float)TICKRATE;
 
-static const unsigned int text_pad_x = SCREEN_WIDTH / 4;
-static const unsigned int text_pad_y = SCREEN_WIDTH / 4;
+static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
+					      .valign = VALIGN_TOP,
+					      .width  = SCREEN_WIDTH,
+					      .height = SCREEN_HEIGHT,
+					      .wrap   = WRAP_WORD };
 
-static const rdpq_textparms_t text_params = {
-	.align	= ALIGN_CENTER,
-	.valign = VALIGN_CENTER,
-	.width	= SCREEN_WIDTH - text_pad_x,
-	.height = SCREEN_HEIGHT - text_pad_y,
-	.wrap	= WRAP_WORD
-};
+#define TEXT_DIM_X 41u
+#define TEXT_DIM_Y 14u
 
-static const char text[] =
-		"Two households, both alike in dignity, in "
-		"fair Verona, where we lay our scene, from "
-		"ancient grudge break to new mutiny, where "
-		"civil blood makes civil hands unclean. From "
-		"forth the fatal loins of these two foes a "
-		"pair of star-cross'd lovers take their life.";
-static int text_len = sizeof(text) - 1;
+static char text_buf[TEXT_DIM_X * TEXT_DIM_Y];
+
+_Static_assert((sizeof(text_buf) % TEXT_DIM_X) == 0);
+static const unsigned int text_buf_line_cnt = sizeof(text_buf) / TEXT_DIM_X;
 
 static rdpq_font_t	     *fnt	= NULL;
 static const rdpq_fontstyle_t fnt_style = {
 	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
 };
 
-static unsigned int text_progress = 0;
-static float	    text_timer	  = 0.f;
-static float	    time_accum	  = 0.f;
+static float time_accum = 0.f;
+
+static void _text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
+{
+	memcpy(buf,
+	       (const char *)"+---------------------------------------+"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
+			     "+---------------------------------------+",
+	       TEXT_DIM_X * TEXT_DIM_Y);
+}
 
 int main(void)
 {
@@ -60,8 +72,9 @@ int main(void)
 
 	/* Main loop */
 	for (;;) {
-		unsigned long	 ticks_old, ticks_new;
-		float		 time_diff;
+		unsigned long ticks_old, ticks_new;
+		unsigned int  i;
+		float	      time_diff;
 
 		ticks_old = get_ticks();
 
@@ -71,12 +84,15 @@ int main(void)
 		rdpq_set_mode_fill(RGBA16(0x3, 0x6, 0x9, 0x1F));
 		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-		rdpq_text_printn(&text_params,
-				 FONT_JETBRAINS_MONO_BOLD,
-				 text_pad_x / 2,
-				 text_pad_y / 2,
-				 text,
-				 text_progress);
+		/* Print the buffer out line by line */
+		for (i = 0; i < text_buf_line_cnt; ++i) {
+			rdpq_text_printn(&text_params,
+					 FONT_JETBRAINS_MONO_BOLD,
+					 16,
+					 10 + (i * 16),
+					 text_buf + (i * TEXT_DIM_X),
+					 TEXT_DIM_X);
+		}
 
 		rdpq_set_mode_standard();
 		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
@@ -97,20 +113,7 @@ int main(void)
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-			/* Reset text progress with start button */
-			if (btn_down.start) {
-				text_progress = 0;
-				continue;
-			}
-
-			/* Advance text */
-			if (text_progress < text_len) {
-				++text_progress;
-				continue;
-			}
-
-			/* Cap text at maximum length */
-			text_progress = text_len;
+			_text_buf_fill_overscan_test(text_buf);
 		}
 	}
 
