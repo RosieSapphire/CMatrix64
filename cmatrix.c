@@ -215,6 +215,20 @@ int main(void)
 		/* Render */
 		rdpq_attach_clear(display_get(), NULL);
 
+		/*
+		 * TODO:
+		 *
+		 * I really want to have it so that there's a slight
+		 * overhang of the colors when the characters move
+		 * down the screen to give it that old-ass CRT kinda
+		 * look (even though I'm testing this on a CRT lol).
+		 *
+		 * I mean more like there's a fucken trail behind
+		 * the characters, which I can probably do by
+		 * drawing a low opacity version of the buffer
+		 * each frame to cause something of a tracer effect.
+		 */
+
 		/* Print the buffer out line by line */
 		for (i = 0; i < text_buf_line_cnt; ++i) {
 			rdpq_text_printn(&text_params,
