@@ -5,9 +5,13 @@
 
 #define FONT_JETBRAINS_MONO_BOLD 1
 
-#define TICKRATE 12u
+#define TICKRATE	   64u
+#define UPDATERATE_DEFAULT 12u
 
 static const float tickrate_sec = 1.f / (float)TICKRATE;
+
+static unsigned int updaterate	   = UPDATERATE_DEFAULT;
+static float	    updaterate_sec = 0.f;
 
 static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
 					      .valign = VALIGN_TOP,
@@ -198,6 +202,8 @@ int main(void)
 
 	streams_array_randomize(streams, sizeof(streams) / sizeof(*streams));
 
+	updaterate_sec = 1.f / (float)updaterate;
+
 	/* Main loop */
 	for (;;) {
 		unsigned long ticks_old, ticks_new;
@@ -233,22 +239,63 @@ int main(void)
 
 		/* Update */
 		for (; time_accum >= tickrate_sec; time_accum -= tickrate_sec) {
-			joypad_buttons_t    btn_down;
-			unsigned int	    color_selected_old;
+			static float	 stream_timer = 0.f;
+			unsigned int	 color_selected_old;
+			unsigned int	 updaterate_old;
+			joypad_buttons_t btn_down;
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
+			/* Reset to defaults with the start button */
+			color_selected_old = color_selected;
+			updaterate_old	   = updaterate;
+			if (btn_down.start) {
+				color_selected = COLOR_GRN;
+				updaterate     = UPDATERATE_DEFAULT;
+				rainbow_mode = false;
+			}
+
+			/*
+			 * TODO:
+			 * Bubby wants me to make it go in reverse. qwq
+			 */
+
+			/* Change the speed of the streams */
+			if (btn_down.c_up && updaterate < 64)
+				updaterate += 4;
+
+			if (btn_down.c_down && updaterate > 4)
+				updaterate -= 4;
+
+			if (updaterate_old != updaterate) {
+				updaterate_sec = 1.f / (float)updaterate;
+				stream_timer   = 0.f;
+			}
+
+			debugf("updaterate = %u\n", updaterate);
+
+			/*
+			 * TODO: When holding L, make it so that you can
+			 * use the c-buttons to adjust the flashing speed
+			 * of the rainbow mode. FUCKING EPILEPSY WARNING!!!
+			 */
+
+			/* Update the streams at a fixed rate */
+			stream_timer += tickrate_sec;
+			while (stream_timer > updaterate_sec) {
+				if (rainbow_mode)
+					++color_selected;
+
+				stream_timer -= updaterate_sec;
+				for (i = 0; i < TEXT_DIM_X; ++i)
+					stream_update(streams + i);
+			}
+
 			/* Toggle rainbow mode! */
 			rainbow_mode ^= btn_down.l;
 
-			for (i = 0; i < TEXT_DIM_X; ++i)
-				stream_update(streams + i);
-
-			color_selected_old = color_selected;
-			if (rainbow_mode)
-				++color_selected;
-			else
+			if (!rainbow_mode)
 				color_selected += (btn_down.c_right -
 						   btn_down.c_left);
 
