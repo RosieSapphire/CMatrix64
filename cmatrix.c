@@ -23,10 +23,16 @@ static char text_buf[TEXT_DIM_X * TEXT_DIM_Y];
 _Static_assert((sizeof(text_buf) % TEXT_DIM_X) == 0);
 static const unsigned int text_buf_line_cnt = sizeof(text_buf) / TEXT_DIM_X;
 
-static rdpq_font_t	     *fnt	= NULL;
-static const rdpq_fontstyle_t fnt_style = {
-	.color = RGBA32(0x00, 0xFF, 0x00, 0xFF)
+enum { COLOR_RED = 0, COLOR_GRN, COLOR_BLU, COLOR_COUNT };
+
+static rdpq_font_t	     *fnt		      = NULL;
+static const rdpq_fontstyle_t fnt_styles[COLOR_COUNT] = {
+	{ .color = RGBA32(0xFF, 0x00, 0x00, 0xFF) },
+	{ .color = RGBA32(0x00, 0xFF, 0x00, 0xFF) },
+	{ .color = RGBA32(0x00, 0x00, 0xFF, 0xFF) },
 };
+static signed int color_selected = COLOR_GRN;
+static bool	  rainbow_mode	 = false;
 
 static float time_accum = 0.f;
 
@@ -106,8 +112,10 @@ static __inline void streams_array_randomize(struct stream *arr,
 {
 	size_t i;
 
-	for (i = 0; i < cnt; ++i)
+	for (i = 0; i < cnt; ++i) {
 		stream_init(arr + i);
+		arr[i].progress = (getentropy32() % TEXT_DIM_Y);
+	}
 }
 
 static void stream_update(struct stream *s)
@@ -124,7 +132,8 @@ static void stream_update(struct stream *s)
 }
 
 static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
-			       const struct stream *s)
+			       const struct stream *s,
+			       const unsigned int   x)
 {
 	unsigned int l;
 	signed int   i, p, pf, e;
@@ -150,19 +159,19 @@ static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
 
 	/* Padding */
 	if (p - 1 >= 0)
-		buf[(p - 1) * TEXT_DIM_X + 3] = ' ';
+		buf[(p - 1) * TEXT_DIM_X + x] = ' ';
 
 	/* Line itself */
 	pf = (p < 0) ? 0 : p;
 	for (i = pf; i < e; ++i)
-		buf[i * TEXT_DIM_X + 3] = s->chars[i];
+		buf[i * TEXT_DIM_X + x] = s->chars[i];
 
 	/*
 	 * Shitty retarded fucking hack to clear the last
 	 * character of a row when a new one starts
 	 */
 	if (p < 0)
-		buf[(TEXT_DIM_Y - 1) * TEXT_DIM_X + 3] = ' ';
+		buf[(TEXT_DIM_Y - 1) * TEXT_DIM_X + x] = ' ';
 }
 
 int main(void)
@@ -182,7 +191,7 @@ int main(void)
 
 	/* Load, configure and register fonts */
 	fnt = rdpq_font_load("rom:/jetbrains_mono_bold.font64");
-	rdpq_font_style(fnt, 0, &fnt_style);
+	rdpq_font_style(fnt, 0, fnt_styles + color_selected);
 	rdpq_text_register_font(FONT_JETBRAINS_MONO_BOLD, fnt);
 
 	memset(text_buf, ' ', sizeof(text_buf));
@@ -224,14 +233,39 @@ int main(void)
 
 		/* Update */
 		for (; time_accum >= tickrate_sec; time_accum -= tickrate_sec) {
-			joypad_buttons_t btn_down;
+			joypad_buttons_t    btn_down;
+			unsigned int	    color_selected_old;
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
-			stream_update(streams + 0);
+
+			/* Toggle rainbow mode! */
+			rainbow_mode ^= btn_down.l;
+
+			for (i = 0; i < TEXT_DIM_X; ++i)
+				stream_update(streams + i);
+
+			color_selected_old = color_selected;
+			if (rainbow_mode)
+				++color_selected;
+			else
+				color_selected += (btn_down.c_right -
+						   btn_down.c_left);
+
+			if (color_selected == color_selected_old)
+				continue;
+
+			/* Clamp the color if it changed */
+			if (color_selected < COLOR_RED)
+				color_selected = COLOR_BLU;
+			else if (color_selected > COLOR_BLU)
+				color_selected = COLOR_RED;
+
+			rdpq_font_style(fnt, 0, fnt_styles + color_selected);
 		}
 
-		stream_to_text_buf(text_buf, streams + 0);
+		for (i = 0; i < TEXT_DIM_X; ++i)
+			stream_to_text_buf(text_buf, streams + i, i);
 	}
 
 	/* Terminate */
