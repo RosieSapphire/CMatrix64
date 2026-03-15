@@ -30,10 +30,11 @@ static const rdpq_fontstyle_t fnt_style = {
 	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
 };
 
+static bool	    start_pressed = false;
+static unsigned int text_progress = 0;
+
 int main(void)
 {
-	bool start_pressed = false;
-
 	/* N64 init */
 	debug_init_isviewer();
 	debug_init_usblog();
@@ -54,8 +55,7 @@ int main(void)
 
 	/* Main loop */
 	for (; !start_pressed;) {
-		rdpq_paragraph_t *par;
-		joypad_buttons_t  btn_down;
+		joypad_buttons_t btn_down;
 
 		/* Render */
 		rdpq_attach_clear(display_get(), NULL);
@@ -63,12 +63,11 @@ int main(void)
 		rdpq_set_mode_fill(RGBA16(0x3, 0x6, 0x9, 0x1F));
 		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-		par = rdpq_paragraph_build(&text_params,
-					   FONT_JETBRAINS_MONO_BOLD,
-					   text,
-					   &text_len);
-		rdpq_paragraph_render(par, text_pad_x / 2, text_pad_y / 2);
-		rdpq_paragraph_free(par);
+		rdpq_text_printf(&text_params,
+				 FONT_JETBRAINS_MONO_BOLD,
+				 text_pad_x / 2,
+				 text_pad_y / 2,
+				 text);
 
 		rdpq_set_mode_standard();
 		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
