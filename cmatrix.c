@@ -25,7 +25,7 @@ static const unsigned int text_buf_line_cnt = sizeof(text_buf) / TEXT_DIM_X;
 
 static rdpq_font_t	     *fnt	= NULL;
 static const rdpq_fontstyle_t fnt_style = {
-	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
+	.color = RGBA32(0x00, 0xFF, 0x00, 0xFF)
 };
 
 static float time_accum = 0.f;
@@ -114,9 +114,6 @@ int main(void)
 
 		/* Render */
 		rdpq_attach_clear(display_get(), NULL);
-
-		rdpq_set_mode_fill(RGBA16(0x3, 0x6, 0x9, 0x1F));
-		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
 		/* Print the buffer out line by line */
 		for (i = 0; i < text_buf_line_cnt; ++i) {
