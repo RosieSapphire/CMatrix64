@@ -1,35 +1,42 @@
 #include <libdragon.h>
 
+#define SCREEN_WIDTH  320u
+#define SCREEN_HEIGHT 240u
+
 enum { FONT_PACIFICO = 1, FONT_ZEROVELOCITY };
 
-static const unsigned int screen_width	= 320u;
-static const unsigned int screen_height = 240u;
-static const unsigned int box_width =
-		(unsigned int)((float)screen_width * 0.8f);
+static const unsigned int box_width = (unsigned int)((float)SCREEN_WIDTH * .8f);
 static const unsigned int box_height =
-		(unsigned int)((float)screen_height * 0.8f);
+		(unsigned int)((float)SCREEN_HEIGHT * .8f);
+static const unsigned int     par_x0	 = (SCREEN_WIDTH - box_width) / 2;
+static const unsigned int     par_y0	 = (SCREEN_HEIGHT - box_height) / 2;
+static const rdpq_textparms_t par_params = { .align  = ALIGN_LEFT,
+					     .valign = VALIGN_CENTER,
+					     .width  = box_width,
+					     .height = box_height,
+					     .wrap   = WRAP_WORD };
+
+static const rdpq_fontstyle_t fnt1_style = {
+	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
+};
+
+static const rdpq_fontstyle_t fnt2_style = {
+	.color = RGBA32(0x82, 0x30, 0x38, 0xFF)
+};
+
+static const unsigned int box_x0 = (SCREEN_WIDTH - box_width) / 2;
+static const unsigned int box_y0 = (SCREEN_HEIGHT - box_height) / 2;
+static const unsigned int box_x1 = (SCREEN_WIDTH + box_width) / 2;
+static const unsigned int box_y1 = (SCREEN_HEIGHT + box_height) / 2;
+
 static const char text[] =
 		"Two $02households$01, both alike in dignity,\n"
 		"In $02fair Verona$01, where we lay our scene,\n"
 		"From ancient grudge break to new $02mutiny$01,\n"
 		"Where $02civil blood$01 makes civil hands unclean.\n"
 		"From forth the fatal loins of these $02two foes$01\n"
-		"A pair of $02star-cross'd lovers$01 take their "
-		"life;\n";
-static int		      text_len	 = sizeof(text) - 1;
-static const int	      par_x0	 = (screen_width - box_width) / 2;
-static const int	      par_y0	 = (screen_height - box_height) / 2;
-static const rdpq_textparms_t par_params = { .align  = ALIGN_LEFT,
-					     .valign = VALIGN_CENTER,
-					     .width  = box_width,
-					     .height = box_height,
-					     .wrap   = WRAP_WORD };
-static const rdpq_fontstyle_t fnt1_style = {
-	.color = RGBA32(0xED, 0xAE, 0x49, 0xFF)
-};
-static const rdpq_fontstyle_t fnt2_style = {
-	.color = RGBA32(0x82, 0x30, 0x38, 0xFF)
-};
+		"A pair of $02star-cross'd lovers$01 take their life;\n";
+static int text_len = sizeof(text) - 1;
 
 static rdpq_font_t *fnt1 = NULL;
 static rdpq_font_t *fnt2 = NULL;
@@ -68,10 +75,7 @@ int main(void)
 		rdpq_attach_clear(display_get(), NULL);
 
 		rdpq_set_mode_fill(RGBA32(0x30, 0x63, 0x8E, 0xFF));
-		rdpq_fill_rectangle((screen_width - box_width) / 2,
-				    (screen_height - box_height) / 2,
-				    (screen_width + box_width) / 2,
-				    (screen_height + box_height) / 2);
+		rdpq_fill_rectangle(box_x0, box_y0, box_x1, box_y1);
 
 		par = rdpq_paragraph_build(&par_params,
 					   FONT_PACIFICO,
@@ -83,11 +87,6 @@ int main(void)
 		rdpq_set_mode_standard();
 		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
 		rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
-		rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0x30));
-		rdpq_fill_rectangle(par->bbox.x0 + par_x0,
-				    par->bbox.y0 + par_y0,
-				    par->bbox.x1 + par_x0,
-				    par->bbox.y1 + par_y0);
 
 		rdpq_detach_show();
 	}
