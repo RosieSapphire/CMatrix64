@@ -5,7 +5,7 @@
 
 #define FONT_JETBRAINS_MONO_BOLD 1
 
-#define TICKRATE 64u
+#define TICKRATE 12u
 
 static const float tickrate_sec = 1.f / (float)TICKRATE;
 
@@ -30,6 +30,7 @@ static const rdpq_fontstyle_t fnt_style = {
 
 static float time_accum = 0.f;
 
+#if 0
 static void _text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
 {
 	memcpy(buf,
@@ -48,6 +49,39 @@ static void _text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
 			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
 			     "+---------------------------------------+",
 	       TEXT_DIM_X * TEXT_DIM_Y);
+}
+#endif
+
+static void _text_buf_fill_random_alnum(char buf[TEXT_DIM_X * TEXT_DIM_Y])
+{
+	unsigned int i;
+
+	/* Generate random array */
+	getentropy(buf, TEXT_DIM_X * TEXT_DIM_Y);
+
+	/* Correct it */
+	for (i = 0; i < TEXT_DIM_X * TEXT_DIM_Y; ++i) {
+		char c;
+
+retry:
+		/* Generate a random number */
+		c = getentropy32() & 0xFF;
+
+		/* Make sure it's within the range of printable characters */
+		while (c < 33)
+			c += 16;
+		while (c > 126)
+			c -= 16;
+
+		/*
+		 * There's a few characters that fuck with the text
+		 * printing in Libdragon, so we're excluding those.
+		 */
+		if (c == '$' || c == '^')
+			goto retry;
+
+		buf[i] = c;
+	}
 }
 
 int main(void)
@@ -113,7 +147,7 @@ int main(void)
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-			_text_buf_fill_overscan_test(text_buf);
+			_text_buf_fill_random_alnum(text_buf);
 		}
 	}
 
