@@ -1,39 +1,42 @@
-BUILD_DIR=build
+BUILD_DIR := build
+FS_DIR    := filesystem
 include $(N64_INST)/include/n64.mk
 
-src = cmatrix.c
-assets_ttf = $(wildcard assets/*.ttf)
-assets_png = $(wildcard assets/*.png)
+NAME_STR := "CMatrix 64"
+NAME     := cmatrix
+DFS_FILE := $(BUILD_DIR)/$(NAME).dfs
+ELF_FILE := $(BUILD_DIR)/$(NAME).elf
+Z64_FILE := $(NAME).z64
 
-assets_conv = $(addprefix filesystem/,$(notdir $(assets_ttf:%.ttf=%.font64))) \
-              $(addprefix filesystem/,$(notdir $(assets_png:%.png=%.sprite)))
+C_FILES := $(NAME).c
+O_FILES := $(C_FILES:%.c=$(BUILD_DIR)/%.o)
+D_FILES := $(wildcard $(BUILD_DIR)/*.d)
+
+ASSETS_TTF := $(wildcard assets/*.ttf)
+
+ASSETS_CONV := $(addprefix $(FS_DIR)/,$(notdir $(ASSETS_TTF:%.ttf=%.font64)))
 
 MKSPRITE_FLAGS ?=
 MKFONT_FLAGS ?=
 
-all: cmatrix.z64
+all: $(Z64_FILE)
 
-filesystem/%.font64: assets/%.ttf
+$(FS_DIR)/%.font64: assets/%.ttf
 	@mkdir -p $(dir $@)
 	@echo "    [FONT] $@"
-	$(N64_MKFONT) $(MKFONT_FLAGS) -o filesystem "$<"
+	$(N64_MKFONT) $(MKFONT_FLAGS) -o $(dir $@) "$<"
 
-filesystem/%.sprite: assets/%.png
-	@mkdir -p $(dir $@)
-	@echo "    [SPRITE] $@"
-	$(N64_MKSPRITE) $(MKSPRITE_FLAGS) -o filesystem "$<"
+$(FS_DIR)/Pacifico.font64: MKFONT_FLAGS+=--size 12
 
-filesystem/Pacifico.font64: MKFONT_FLAGS+=--size 12
+$(DFS_FILE): $(ASSETS_CONV)
+$(ELF_FILE): $(O_FILES)
 
-$(BUILD_DIR)/cmatrix.dfs: $(assets_conv)
-$(BUILD_DIR)/cmatrix.elf: $(src:%.c=$(BUILD_DIR)/%.o)
-
-cmatrix.z64: N64_ROM_TITLE="RDPQ Font Demo"
-cmatrix.z64: $(BUILD_DIR)/cmatrix.dfs 
+$(Z64_FILE): N64_ROM_TITLE=$(NAME_STR)
+$(Z64_FILE): $(DFS_FILE)
 
 clean:
-	rm -rf $(BUILD_DIR) filesystem cmatrix.z64 compile_commands.json .cache/
+	rm -rf $(BUILD_DIR) $(FS_DIR) $(Z64_FILE) compile_commands.json .cache/
 
--include $(wildcard $(BUILD_DIR)/*.d)
+-include $(D_FILES)
 
 .PHONY: all clean
