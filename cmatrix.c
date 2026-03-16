@@ -8,7 +8,11 @@
 #define TICKRATE	   64u
 #define UPDATERATE_DEFAULT 12u
 
-static const float tickrate_sec = 1.f / (float)TICKRATE;
+#define COLOR_CHANGE_RATE 120.f
+
+static const float tickrate_sec	      = 1.f / (float)TICKRATE;
+static float	   rainbow_timer_prev = 0.f;
+static float	   rainbow_timer_curr = 0.f;
 
 static unsigned int updaterate	   = UPDATERATE_DEFAULT;
 static float	    updaterate_sec = 0.f;
@@ -187,6 +191,117 @@ static __inline rspq_block_t *cmatrix_partial_clear_dl_gen(void)
 	return rspq_block_end();
 }
 
+#if 1
+typedef struct {
+	float h;
+	float s;
+	float v;
+} color_hsv_t;
+
+uint32_t hsv_to_rgba32(const color_hsv_t hsv)
+{
+	float r = 0, g = 0, b = 0, hf, f, pv, qv, tv, h;
+	int   i;
+
+	/* Ensure hue is within 0-360 degrees */
+	h = hsv.h;
+	while (h < 0)
+		h += 360;
+	while (h >= 360)
+		h -= 360;
+
+	if (hsv.v <= 0)
+		return 0x0;
+
+	/* Gray */
+	if (hsv.s <= 0) {
+		const uint8_t c = (uint8_t)(hsv.v * 255.0f);
+
+		return (c << 24) | (c << 16) | (c << 8) | 0xFF;
+	}
+
+	hf = h / 60.f;
+	i  = (int)floor(hf);
+	f  = hf - i;
+	pv = hsv.v * (1 - hsv.s);
+	qv = hsv.v * (1 - hsv.s * f);
+	tv = hsv.v * (1 - hsv.s * (1 - f));
+
+	switch (i) {
+	case 0: /* Red is dominant */
+		r = hsv.v;
+		g = tv;
+		b = pv;
+		break;
+	case 1: /* Green is dominant */
+		r = qv;
+		g = hsv.v;
+		b = pv;
+		break;
+	case 2:
+		r = pv;
+		g = hsv.v;
+		b = tv;
+		break;
+	case 3: /* Blue is dominant */
+		r = pv;
+		g = qv;
+		b = hsv.v;
+		break;
+	case 4:
+		r = tv;
+		g = pv;
+		b = hsv.v;
+		break;
+	case 5: /* Red is dominant again */
+		r = hsv.v;
+		g = pv;
+		b = qv;
+		break;
+	default:
+		assertf(0, "Hue is out of range!");
+	}
+
+	/* Convert to a uint32_t and return */
+	return ((uint8_t)(r * 255.0) << 24) | ((uint8_t)(g * 255.0) << 16) |
+	       ((uint8_t)(b * 255.0) << 8) | 0xFF;
+}
+
+#endif
+
+static void
+cmatrix_buffer_render_to_screen(const char  buf[TEXT_DIM_X * TEXT_DIM_Y],
+				const bool  do_rainbow,
+				const float timer_prev,
+				const float timer_curr,
+				const float subtick)
+{
+	const float t = timer_prev + (timer_curr - timer_prev) * subtick;
+	size_t	    i;
+
+	rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
+	rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+
+	for (i = 0; i < TEXT_DIM_Y; ++i) {
+		const float fi = (float)i / TEXT_DIM_Y;
+
+		if (do_rainbow) {
+			const color_hsv_t hsv = { fi * 360.f + t, 1.f, 1.f };
+			const color_t	  col =
+					color_from_packed32(hsv_to_rgba32(hsv));
+			const rdpq_fontstyle_t s = { .color = col };
+			rdpq_font_style(fnt, 0, &s);
+		}
+
+		rdpq_text_printn(&text_params,
+				 FONT_JETBRAINS_MONO_BOLD,
+				 16,
+				 10 + (i * 16),
+				 buf + (i * TEXT_DIM_X),
+				 TEXT_DIM_X);
+	}
+}
+
 int main(void)
 {
 	/* N64 init */
@@ -223,6 +338,7 @@ int main(void)
 
 	/* Main loop */
 	for (;;) {
+		static float  subtick = 0.f;
 		unsigned long ticks_old, ticks_new;
 		unsigned int  i;
 		float	      time_diff;
@@ -240,18 +356,11 @@ int main(void)
 		 * I would love to put this into a
 		 * DL, but it doesn't seem to work.
 		 */
-		rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
-		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
-
-		/* Render the CMatrix buffer to the screen */
-		for (i = 0; i < sizeof(text_buf) / TEXT_DIM_X; ++i) {
-			rdpq_text_printn(&text_params,
-					 FONT_JETBRAINS_MONO_BOLD,
-					 16,
-					 10 + (i * 16),
-					 text_buf + (i * TEXT_DIM_X),
-					 TEXT_DIM_X);
-		}
+		cmatrix_buffer_render_to_screen(text_buf,
+						rainbow_mode,
+						rainbow_timer_prev,
+						rainbow_timer_curr,
+						subtick);
 
 		rdpq_detach_show();
 
@@ -263,10 +372,12 @@ int main(void)
 
 		/* Update */
 		for (; time_accum >= tickrate_sec; time_accum -= tickrate_sec) {
+			const float	 dt	      = tickrate_sec;
 			static float	 stream_timer = 0.f;
 			unsigned int	 color_selected_old;
 			unsigned int	 updaterate_old;
 			joypad_buttons_t btn_down;
+			static bool	 rainbow_mode_last = false;
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
@@ -278,6 +389,9 @@ int main(void)
 				color_selected = COLOR_GRN;
 				updaterate     = UPDATERATE_DEFAULT;
 				rainbow_mode   = false;
+				rdpq_font_style(fnt,
+						0,
+						fnt_styles + color_selected);
 			}
 
 			/*
@@ -306,32 +420,46 @@ int main(void)
 			/* Update the streams at a fixed rate */
 			stream_timer += tickrate_sec;
 			while (stream_timer > updaterate_sec) {
-				if (rainbow_mode)
-					++color_selected;
-
 				stream_timer -= updaterate_sec;
 				for (i = 0; i < TEXT_DIM_X; ++i)
 					stream_update(streams + i);
 			}
 
 			/* Toggle rainbow mode! */
+			rainbow_mode_last = rainbow_mode;
 			rainbow_mode ^= btn_down.l;
 
-			if (!rainbow_mode)
-				color_selected += (btn_down.c_right -
-						   btn_down.c_left);
+			/*
+			 * Make sure the color is correct when
+			 * switching back from rainbow mode
+			 */
+			if (rainbow_mode != rainbow_mode_last) {
+				rdpq_font_style(fnt,
+						0,
+						fnt_styles + color_selected);
+			}
 
-			if (color_selected == color_selected_old)
+			if (rainbow_mode) {
+				rainbow_timer_prev = rainbow_timer_curr;
+				rainbow_timer_curr -= dt * COLOR_CHANGE_RATE;
 				continue;
+			}
 
-			/* Clamp the color if it changed */
-			if (color_selected < COLOR_RED)
-				color_selected = COLOR_BLU;
-			else if (color_selected > COLOR_BLU)
-				color_selected = COLOR_RED;
-
-			rdpq_font_style(fnt, 0, fnt_styles + color_selected);
+			/* Change color ONLY IF rainbow mode is not active */
+			color_selected += (btn_down.c_right - btn_down.c_left);
+			if (color_selected != color_selected_old) {
+				/* Clamp the color if it changed */
+				if (color_selected < COLOR_RED)
+					color_selected = COLOR_BLU;
+				else if (color_selected > COLOR_BLU)
+					color_selected = COLOR_RED;
+				rdpq_font_style(fnt,
+						0,
+						fnt_styles + color_selected);
+			}
 		}
+
+		subtick = time_accum / tickrate_sec;
 
 		for (i = 0; i < TEXT_DIM_X; ++i)
 			stream_to_text_buf(text_buf, streams + i, i);
