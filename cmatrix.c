@@ -350,8 +350,10 @@ cmatrix_buffer_render_to_screen(const char  buf[TEXT_DIM_X * TEXT_DIM_Y],
 int main(void)
 {
 	/* N64 init */
+#ifdef _DEBUG
 	debug_init_isviewer();
 	debug_init_usblog();
+#endif /* #ifdef _DEBUG */
 
 	dfs_init(DFS_DEFAULT_LOCATION);
 	display_init(RESOLUTION_320x240,
@@ -360,6 +362,9 @@ int main(void)
 		     GAMMA_NONE,
 		     FILTERS_RESAMPLE);
 	rdpq_init();
+#ifdef _DEBUG
+	rdpq_debug_start();
+#endif /* #ifdef _DEBUG */
 	joypad_init();
 
 	/* Load, configure and register fonts */
@@ -525,6 +530,9 @@ int main(void)
 	rdpq_text_unregister_font(FONT_MAIN);
 	rdpq_font_free(fnt);
 	joypad_close();
+#ifdef _DEBUG
+	rdpq_debug_stop();
+#endif /* #ifdef _DEBUG */
 	rdpq_close();
 	display_close();
 }
