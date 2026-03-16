@@ -13,6 +13,9 @@ static const float tickrate_sec = 1.f / (float)TICKRATE;
 static unsigned int updaterate	   = UPDATERATE_DEFAULT;
 static float	    updaterate_sec = 0.f;
 
+static rspq_block_t *cmatrix_render_mode_base_dl = NULL;
+static rspq_block_t *cmatrix_partial_clear_dl	 = NULL;
+
 static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
 					      .valign = VALIGN_TOP,
 					      .width  = SCREEN_WIDTH,
@@ -25,7 +28,6 @@ static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
 static char text_buf[TEXT_DIM_X * TEXT_DIM_Y];
 
 _Static_assert((sizeof(text_buf) % TEXT_DIM_X) == 0);
-static const unsigned int text_buf_line_cnt = sizeof(text_buf) / TEXT_DIM_X;
 
 enum { COLOR_RED = 0, COLOR_GRN, COLOR_BLU, COLOR_COUNT };
 
@@ -39,28 +41,6 @@ static signed int color_selected = COLOR_GRN;
 static bool	  rainbow_mode	 = false;
 
 static float time_accum = 0.f;
-
-#if 0
-static void text_buf_fill_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
-{
-	memcpy(buf,
-	       (const char *)"+---------------------------------------+"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|"
-			     "+---------------------------------------+",
-	       TEXT_DIM_X * TEXT_DIM_Y);
-}
-#endif
 
 struct stream {
 	unsigned int length;
@@ -106,7 +86,7 @@ static void stream_init(struct stream *s)
 {
 	do {
 		s->length = getentropy32() % TEXT_DIM_Y;
-	} while (s->length < 3 || s->length > TEXT_DIM_Y - 2);
+	} while (!s->length);
 	s->progress = -(signed int)s->length;
 	buf_fill_random(s->chars, TEXT_DIM_Y);
 }
@@ -178,6 +158,35 @@ static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
 		buf[(TEXT_DIM_Y - 1) * TEXT_DIM_X + x] = ' ';
 }
 
+static __inline rspq_block_t *cmatrix_render_mode_base_dl_gen(void)
+{
+	rspq_block_begin();
+	{
+		rdpq_mode_alphacompare(0);
+		rdpq_mode_antialias(AA_NONE);
+		rdpq_mode_dithering(DITHER_NONE_NONE);
+		rdpq_mode_filter(FILTER_POINT);
+		rdpq_mode_fog(0);
+		rdpq_mode_mipmap(MIPMAP_NONE, 0);
+		rdpq_mode_persp(false);
+		rdpq_mode_zbuf(false, false);
+	}
+	return rspq_block_end();
+}
+
+static __inline rspq_block_t *cmatrix_partial_clear_dl_gen(void)
+{
+	rspq_block_begin();
+	{
+		rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
+		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY_CONST);
+		rdpq_set_prim_color(color_from_packed32(0x0));
+		rdpq_set_fog_color(color_from_packed32(0x60));
+		rdpq_fill_rectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+	}
+	return rspq_block_end();
+}
+
 int main(void)
 {
 	/* N64 init */
@@ -204,6 +213,14 @@ int main(void)
 
 	updaterate_sec = 1.f / (float)updaterate;
 
+	/* Generate and verify displaylist */
+	cmatrix_render_mode_base_dl = cmatrix_render_mode_base_dl_gen();
+	cmatrix_partial_clear_dl    = cmatrix_partial_clear_dl_gen();
+	assertf(cmatrix_render_mode_base_dl,
+		"Failed to generate displaylist for the base render mode");
+	assertf(cmatrix_partial_clear_dl,
+		"Failed to generate displaylist for partially clearing screen");
+
 	/* Main loop */
 	for (;;) {
 		unsigned long ticks_old, ticks_new;
@@ -212,25 +229,22 @@ int main(void)
 
 		ticks_old = get_ticks();
 
-		/* Render */
-		rdpq_attach_clear(display_get(), NULL);
+		/* Render to surface */
+		rdpq_attach(display_get(), NULL);
+
+		rspq_block_run(cmatrix_render_mode_base_dl);
+		rspq_block_run(cmatrix_partial_clear_dl);
 
 		/*
 		 * TODO:
-		 *
-		 * I really want to have it so that there's a slight
-		 * overhang of the colors when the characters move
-		 * down the screen to give it that old-ass CRT kinda
-		 * look (even though I'm testing this on a CRT lol).
-		 *
-		 * I mean more like there's a fucken trail behind
-		 * the characters, which I can probably do by
-		 * drawing a low opacity version of the buffer
-		 * each frame to cause something of a tracer effect.
+		 * I would love to put this into a
+		 * DL, but it doesn't seem to work.
 		 */
+		rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
+		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
 
-		/* Print the buffer out line by line */
-		for (i = 0; i < text_buf_line_cnt; ++i) {
+		/* Render the CMatrix buffer to the screen */
+		for (i = 0; i < sizeof(text_buf) / TEXT_DIM_X; ++i) {
 			rdpq_text_printn(&text_params,
 					 FONT_JETBRAINS_MONO_BOLD,
 					 16,
@@ -238,10 +252,6 @@ int main(void)
 					 text_buf + (i * TEXT_DIM_X),
 					 TEXT_DIM_X);
 		}
-
-		rdpq_set_mode_standard();
-		rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
-		rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
 
 		rdpq_detach_show();
 
@@ -267,7 +277,7 @@ int main(void)
 			if (btn_down.start) {
 				color_selected = COLOR_GRN;
 				updaterate     = UPDATERATE_DEFAULT;
-				rainbow_mode = false;
+				rainbow_mode   = false;
 			}
 
 			/*
@@ -286,8 +296,6 @@ int main(void)
 				updaterate_sec = 1.f / (float)updaterate;
 				stream_timer   = 0.f;
 			}
-
-			debugf("updaterate = %u\n", updaterate);
 
 			/*
 			 * TODO: When holding L, make it so that you can
@@ -330,6 +338,8 @@ int main(void)
 	}
 
 	/* Terminate */
+	rspq_block_free(cmatrix_partial_clear_dl);
+	rspq_block_free(cmatrix_render_mode_base_dl);
 	rdpq_text_unregister_font(FONT_JETBRAINS_MONO_BOLD);
 	rdpq_font_free(fnt);
 	joypad_close();
