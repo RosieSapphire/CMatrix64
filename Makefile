@@ -1,3 +1,5 @@
+DEBUG_MODE ?=
+
 BUILD_DIR := build
 FS_DIR    := filesystem
 include $(N64_INST)/include/n64.mk
@@ -17,7 +19,15 @@ ASSETS_TTF := $(wildcard assets/*.ttf)
 ASSETS_CONV := $(addprefix $(FS_DIR)/,$(notdir $(ASSETS_TTF:%.ttf=%.font64)))
 
 MKSPRITE_FLAGS ?=
-MKFONT_FLAGS ?=
+MKFONT_FLAGS ?= --size 12
+
+N64_CFLAGS += -Wall -Wextra -Werror -std=gnu99 -Wdeclaration-after-statement
+
+ifdef DEBUG_MODE
+	N64_CFLAGS += -O0 -ggdb3 -D_DEBUG -DDEBUG
+else
+	N64_CFLAGS += -Os -g0 -DNDEBUG -DRELEASE
+endif
 
 all: $(Z64_FILE)
 
@@ -25,8 +35,6 @@ $(FS_DIR)/%.font64: assets/%.ttf
 	@mkdir -p $(dir $@)
 	@echo "    [FONT] $@"
 	$(N64_MKFONT) $(MKFONT_FLAGS) -o $(dir $@) "$<"
-
-$(FS_DIR)/Pacifico.font64: MKFONT_FLAGS+=--size 12
 
 $(DFS_FILE): $(ASSETS_CONV)
 $(ELF_FILE): $(O_FILES)

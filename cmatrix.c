@@ -3,12 +3,14 @@
 #define SCREEN_WIDTH  320u
 #define SCREEN_HEIGHT 240u
 
-#define FONT_JETBRAINS_MONO_BOLD 1
+#define TEXT_DIM_X 41u
+#define TEXT_DIM_Y 14u
+
+#define FONT_MAIN 1
 
 #define TICKRATE	   64u
 #define UPDATERATE_DEFAULT 12u
-
-#define COLOR_CHANGE_RATE 120.f
+#define COLOR_CHANGE_RATE  120.f
 
 static const float tickrate_sec	      = 1.f / (float)TICKRATE;
 static float	   rainbow_timer_prev = 0.f;
@@ -20,14 +22,17 @@ static float	    updaterate_sec = 0.f;
 static rspq_block_t *cmatrix_render_mode_base_dl = NULL;
 static rspq_block_t *cmatrix_partial_clear_dl	 = NULL;
 
+#ifdef _DEBUG
+static rspq_block_t *debug_mode_dl	    = NULL;
+static bool	     debug_mode_blink_state = true;
+static float	     debug_mode_blink_timer = 0.f;
+#endif /* #ifdef _DEBUG */
+
 static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
 					      .valign = VALIGN_TOP,
 					      .width  = SCREEN_WIDTH,
 					      .height = SCREEN_HEIGHT,
 					      .wrap   = WRAP_WORD };
-
-#define TEXT_DIM_X 41u
-#define TEXT_DIM_Y 14u
 
 static char text_buf[TEXT_DIM_X * TEXT_DIM_Y];
 
@@ -53,6 +58,37 @@ struct stream {
 };
 
 static struct stream streams[TEXT_DIM_X];
+
+#ifdef _DEBUG
+static rspq_block_t *debug_mode_dl_gen(void)
+{
+	static const color_t c = RGBA32(0xFF, 0x00, 0x00, 0xFF);
+
+	static const struct {
+		uint16_t x;
+		uint16_t y;
+		uint16_t w;
+		uint16_t h;
+	} r = { 248, 204, 46, 22 };
+
+	static const rdpq_textparms_t tp = { .align  = ALIGN_CENTER,
+					     .valign = VALIGN_CENTER,
+					     .width  = r.w,
+					     .height = r.h,
+					     .wrap   = WRAP_WORD };
+
+	static const rdpq_fontstyle_t fs = {
+		.color = RGBA32(0xFF, 0xFF, 0xFF, 0xFF)
+	};
+
+	rspq_block_begin();
+	rdpq_set_mode_fill(c);
+	rdpq_fill_rectangle(r.x, r.y, r.x + r.w, r.y + r.h);
+	rdpq_font_style(fnt, 0, &fs);
+	rdpq_text_print(&tp, FONT_MAIN, r.x + 1, r.y, "DEBUG");
+	return rspq_block_end();
+}
+#endif /* #ifdef _DEBUG */
 
 static void buf_fill_random(char *buf, const size_t buf_sz)
 {
@@ -108,6 +144,13 @@ static __inline void streams_array_randomize(struct stream *arr,
 
 static void stream_update(struct stream *s)
 {
+	if ((size_t)(s - streams) == (TEXT_DIM_X - 1)) {
+		s->length   = TEXT_DIM_Y;
+		s->progress = 0;
+		memcpy(s->chars, "abcdefghijklmn", TEXT_DIM_Y);
+		return;
+	}
+
 	/*
 	 * Update progress, and if it's not over
 	 * the limit, we're done for this frame.
@@ -137,13 +180,13 @@ static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
 	/* Get clamped length */
 	p = s->progress;
 	l = s->length;
-	if (p + (signed int)l >= TEXT_DIM_Y)
+	if (p + l >= (signed int)TEXT_DIM_Y)
 		l = TEXT_DIM_Y - 1;
 
 	/* Get clamped end */
 	e = p + l;
-	if (e > TEXT_DIM_Y)
-		e = TEXT_DIM_Y;
+	if (e > (signed int)TEXT_DIM_Y)
+		e = (signed int)TEXT_DIM_Y;
 
 	/* Padding */
 	if (p - 1 >= 0)
@@ -168,7 +211,7 @@ static __inline rspq_block_t *cmatrix_render_mode_base_dl_gen(void)
 	{
 		rdpq_mode_alphacompare(0);
 		rdpq_mode_antialias(AA_NONE);
-		rdpq_mode_dithering(DITHER_NONE_NONE);
+		rdpq_mode_dithering(DITHER_NOISE_NOISE);
 		rdpq_mode_filter(FILTER_POINT);
 		rdpq_mode_fog(0);
 		rdpq_mode_mipmap(MIPMAP_NONE, 0);
@@ -291,10 +334,12 @@ cmatrix_buffer_render_to_screen(const char  buf[TEXT_DIM_X * TEXT_DIM_Y],
 					color_from_packed32(hsv_to_rgba32(hsv));
 			const rdpq_fontstyle_t s = { .color = col };
 			rdpq_font_style(fnt, 0, &s);
+		} else {
+			rdpq_font_style(fnt, 0, fnt_styles + color_selected);
 		}
 
 		rdpq_text_printn(&text_params,
-				 FONT_JETBRAINS_MONO_BOLD,
+				 FONT_MAIN,
 				 16,
 				 10 + (i * 16),
 				 buf + (i * TEXT_DIM_X),
@@ -319,8 +364,7 @@ int main(void)
 
 	/* Load, configure and register fonts */
 	fnt = rdpq_font_load("rom:/jetbrains_mono_bold.font64");
-	rdpq_font_style(fnt, 0, fnt_styles + color_selected);
-	rdpq_text_register_font(FONT_JETBRAINS_MONO_BOLD, fnt);
+	rdpq_text_register_font(FONT_MAIN, fnt);
 
 	memset(text_buf, ' ', sizeof(text_buf));
 
@@ -331,10 +375,18 @@ int main(void)
 	/* Generate and verify displaylist */
 	cmatrix_render_mode_base_dl = cmatrix_render_mode_base_dl_gen();
 	cmatrix_partial_clear_dl    = cmatrix_partial_clear_dl_gen();
+#ifdef _DEBUG
+	debug_mode_dl = debug_mode_dl_gen();
+#endif /* #ifdef _DEBUG */
+
 	assertf(cmatrix_render_mode_base_dl,
 		"Failed to generate displaylist for the base render mode");
 	assertf(cmatrix_partial_clear_dl,
 		"Failed to generate displaylist for partially clearing screen");
+#ifdef _DEBUG
+	assertf(debug_mode_dl,
+		"Failed to generate debug mode label displaylist");
+#endif /* #ifdef _DEBUG */
 
 	/* Main loop */
 	for (;;) {
@@ -345,7 +397,9 @@ int main(void)
 
 		ticks_old = get_ticks();
 
-		/* Render to surface */
+		/*************
+		 * RENDERING *
+		 *************/
 		rdpq_attach(display_get(), NULL);
 
 		rspq_block_run(cmatrix_render_mode_base_dl);
@@ -362,6 +416,11 @@ int main(void)
 						rainbow_timer_curr,
 						subtick);
 
+#ifdef _DEBUG
+		if (debug_mode_blink_state)
+			rspq_block_run(debug_mode_dl);
+#endif /* #ifdef _DEBUG */
+
 		rdpq_detach_show();
 
 		/* Calculate time */
@@ -370,14 +429,24 @@ int main(void)
 			    (float)TICKS_PER_SECOND;
 		time_accum += time_diff;
 
-		/* Update */
+		/************
+		 * UPDATING *
+		 ************/
 		for (; time_accum >= tickrate_sec; time_accum -= tickrate_sec) {
 			const float	 dt	      = tickrate_sec;
 			static float	 stream_timer = 0.f;
-			unsigned int	 color_selected_old;
 			unsigned int	 updaterate_old;
+			signed int	 color_selected_old;
 			joypad_buttons_t btn_down;
-			static bool	 rainbow_mode_last = false;
+
+#ifdef _DEBUG
+			debug_mode_blink_timer += dt;
+			while ((int)debug_mode_blink_timer) {
+				debug_mode_blink_timer -=
+						(int)debug_mode_blink_timer;
+				debug_mode_blink_state ^= 1;
+			}
+#endif /* #ifdef _DEBUG */
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);
@@ -389,9 +458,6 @@ int main(void)
 				color_selected = COLOR_GRN;
 				updaterate     = UPDATERATE_DEFAULT;
 				rainbow_mode   = false;
-				rdpq_font_style(fnt,
-						0,
-						fnt_styles + color_selected);
 			}
 
 			/*
@@ -426,19 +492,9 @@ int main(void)
 			}
 
 			/* Toggle rainbow mode! */
-			rainbow_mode_last = rainbow_mode;
 			rainbow_mode ^= btn_down.l;
 
-			/*
-			 * Make sure the color is correct when
-			 * switching back from rainbow mode
-			 */
-			if (rainbow_mode != rainbow_mode_last) {
-				rdpq_font_style(fnt,
-						0,
-						fnt_styles + color_selected);
-			}
-
+			/* Update the rainbow mode timer if it's active */
 			if (rainbow_mode) {
 				rainbow_timer_prev = rainbow_timer_curr;
 				rainbow_timer_curr -= dt * COLOR_CHANGE_RATE;
@@ -447,16 +503,14 @@ int main(void)
 
 			/* Change color ONLY IF rainbow mode is not active */
 			color_selected += (btn_down.c_right - btn_down.c_left);
-			if (color_selected != color_selected_old) {
-				/* Clamp the color if it changed */
-				if (color_selected < COLOR_RED)
-					color_selected = COLOR_BLU;
-				else if (color_selected > COLOR_BLU)
-					color_selected = COLOR_RED;
-				rdpq_font_style(fnt,
-						0,
-						fnt_styles + color_selected);
-			}
+			if (color_selected == color_selected_old)
+				continue;
+
+			/* Clamp the color if it changed */
+			if (color_selected < COLOR_RED)
+				color_selected = COLOR_BLU;
+			else if (color_selected > COLOR_BLU)
+				color_selected = COLOR_RED;
 		}
 
 		subtick = time_accum / tickrate_sec;
@@ -468,7 +522,7 @@ int main(void)
 	/* Terminate */
 	rspq_block_free(cmatrix_partial_clear_dl);
 	rspq_block_free(cmatrix_render_mode_base_dl);
-	rdpq_text_unregister_font(FONT_JETBRAINS_MONO_BOLD);
+	rdpq_text_unregister_font(FONT_MAIN);
 	rdpq_font_free(fnt);
 	joypad_close();
 	rdpq_close();
