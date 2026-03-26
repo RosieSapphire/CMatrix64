@@ -2,11 +2,23 @@
 #include <rp_assert.h>
 #include <rp_types.h>
 
+#ifdef HIGH_RES
+
+#define SCREEN_WIDTH  640u
+#define SCREEN_HEIGHT 480u
+
+#define TEXT_DIM_X 82u
+#define TEXT_DIM_Y 29u
+
+#else /* #ifdef HIGH_RES */
+
 #define SCREEN_WIDTH  320u
 #define SCREEN_HEIGHT 240u
 
 #define TEXT_DIM_X 41u
 #define TEXT_DIM_Y 14u
+
+#endif /* #ifdef HIGH_RES #else */
 
 #define FONT_MAIN 1
 
@@ -14,9 +26,13 @@
 #define UPDATERATE_DEFAULT 12u
 #define COLOR_CHANGE_RATE  120.f
 
-#if 0
-#define OVERSCAN_TEST
-#endif
+enum { COLOR_RED = 0, COLOR_GRN, COLOR_BLU, COLOR_COUNT };
+
+struct stream {
+	u32  length;
+	s32  progress;
+	char chars[TEXT_DIM_Y];
+};
 
 static rdpq_font_t	     *fnt	  = NULL;
 static const rdpq_textparms_t text_params = { .align  = ALIGN_LEFT,
@@ -30,17 +46,7 @@ RP_STATIC_ASSERT((sizeof(text_buf) % TEXT_DIM_X) == 0,
 		 _text_buf_must_be_divisible_by_width);
 
 static rspq_block_t *cmatrix_render_mode_base_dl = NULL;
-static rspq_block_t *cmatrix_partial_clear_dl	 = NULL;
-
-#ifndef OVERSCAN_TEST
-
-enum { COLOR_RED = 0, COLOR_GRN, COLOR_BLU, COLOR_COUNT };
-
-struct stream {
-	u32  length;
-	s32  progress;
-	char chars[TEXT_DIM_Y];
-};
+static rspq_block_t *cmatrix_partial_clear_dl = NULL;
 
 static u32 updaterate	  = UPDATERATE_DEFAULT;
 static f32 updaterate_sec = 0.f;
@@ -67,10 +73,7 @@ static bool_t rainbow_mode   = FALSE;
 static f32 time_accum = 0.f;
 
 static struct stream streams[TEXT_DIM_X];
-#endif /* #ifndef OVERSCAN_TEST */
 
-
-#ifndef OVERSCAN_TEST
 #ifdef _DEBUG
 static rspq_block_t *debug_mode_dl_gen(void)
 {
@@ -94,14 +97,15 @@ static rspq_block_t *debug_mode_dl_gen(void)
 	};
 
 	rspq_block_begin();
-	rdpq_set_mode_fill(c);
-	rdpq_fill_rectangle(r.x, r.y, r.x + r.w, r.y + r.h);
-	rdpq_font_style(fnt, 0, &fs);
-	rdpq_text_print(&tp, FONT_MAIN, r.x + 1, r.y, "DEBUG");
+	{
+		rdpq_set_mode_fill(c);
+		rdpq_fill_rectangle(r.x, r.y, r.x + r.w, r.y + r.h);
+		rdpq_font_style(fnt, 0, &fs);
+		rdpq_text_print(&tp, FONT_MAIN, r.x + 1, r.y, "DEBUG");
+	}
 	return rspq_block_end();
 }
 #endif /* #ifdef _DEBUG */
-#endif /* #ifndef OVERSCAN_TEST */
 
 static void buf_fill_random(char *buf, const size_t buf_sz)
 {
@@ -155,7 +159,6 @@ static __inline void streams_array_randomize(struct stream *arr,
 	}
 }
 
-#ifndef OVERSCAN_TEST
 static void stream_update(struct stream *s)
 {
 	if ((size_t)(s - streams) == (TEXT_DIM_X - 1)) {
@@ -218,7 +221,6 @@ static void stream_to_text_buf(char buf[TEXT_DIM_X * TEXT_DIM_Y],
 	if (p < 0)
 		buf[(TEXT_DIM_Y - 1) * TEXT_DIM_X + x] = ' ';
 }
-#endif /* #ifndef OVERSCAN_TEST */
 
 static __inline rspq_block_t *cmatrix_render_mode_base_dl_gen(void)
 {
@@ -249,31 +251,30 @@ static __inline rspq_block_t *cmatrix_partial_clear_dl_gen(void)
 	return rspq_block_end();
 }
 
-#if 1
-typedef struct {
+struct color_hsv {
 	f32 h;
 	f32 s;
 	f32 v;
-} color_hsv_t;
+};
 
-u32 hsv_to_rgba32(const color_hsv_t hsv)
+u32 rgba32_from_hsv(const struct color_hsv *hsv)
 {
 	f32 r = 0, g = 0, b = 0, hf, f, pv, qv, tv, h;
 	u32 i;
 
 	/* Ensure hue is within 0-360 degrees */
-	h = hsv.h;
+	h = hsv->h;
 	while (h < 0)
 		h += 360;
 	while (h >= 360)
 		h -= 360;
 
-	if (hsv.v <= 0)
+	if (hsv->v <= 0)
 		return 0x0;
 
 	/* Gray */
-	if (hsv.s <= 0) {
-		const u8 c = (u8)(hsv.v * 255.0f);
+	if (hsv->s <= 0) {
+		const u8 c = (u8)(hsv->v * 255.0f);
 
 		return (c << 24) | (c << 16) | (c << 8) | 0xFF;
 	}
@@ -281,38 +282,38 @@ u32 hsv_to_rgba32(const color_hsv_t hsv)
 	hf = h / 60.f;
 	i  = (u32)floorf(hf);
 	f  = hf - (f32)i;
-	pv = hsv.v * (1 - hsv.s);
-	qv = hsv.v * (1 - hsv.s * f);
-	tv = hsv.v * (1 - hsv.s * (1 - f));
+	pv = hsv->v * (1 - hsv->s);
+	qv = hsv->v * (1 - hsv->s * f);
+	tv = hsv->v * (1 - hsv->s * (1 - f));
 
 	switch (i) {
 	case 0: /* Red is dominant */
-		r = hsv.v;
+		r = hsv->v;
 		g = tv;
 		b = pv;
 		break;
 	case 1: /* Green is dominant */
 		r = qv;
-		g = hsv.v;
+		g = hsv->v;
 		b = pv;
 		break;
 	case 2:
 		r = pv;
-		g = hsv.v;
+		g = hsv->v;
 		b = tv;
 		break;
 	case 3: /* Blue is dominant */
 		r = pv;
 		g = qv;
-		b = hsv.v;
+		b = hsv->v;
 		break;
 	case 4:
 		r = tv;
 		g = pv;
-		b = hsv.v;
+		b = hsv->v;
 		break;
 	case 5: /* Red is dominant again */
-		r = hsv.v;
+		r = hsv->v;
 		g = pv;
 		b = qv;
 		break;
@@ -325,9 +326,6 @@ u32 hsv_to_rgba32(const color_hsv_t hsv)
 	       ((u8)(b * 255.0) << 8) | 0xFF;
 }
 
-#endif
-
-#ifndef OVERSCAN_TEST
 static void
 cmatrix_buffer_render_to_screen(const char   buf[TEXT_DIM_X * TEXT_DIM_Y],
 				const bool_t do_rainbow,
@@ -335,20 +333,30 @@ cmatrix_buffer_render_to_screen(const char   buf[TEXT_DIM_X * TEXT_DIM_Y],
 				const f32    timer_curr,
 				const f32    subtick)
 {
-	const f32 t = timer_prev + (timer_curr - timer_prev) * subtick;
-	size_t	  i;
+	f32    t;
+	size_t i;
+
+	t = timer_prev + (timer_curr - timer_prev) * subtick;
 
 	rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
 	rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
 
 	for (i = 0; i < TEXT_DIM_Y; ++i) {
-		const f32 fi = (f32)i / TEXT_DIM_Y;
+		f32 fi;
+
+		fi = (f32)i / TEXT_DIM_Y;
 
 		if (do_rainbow) {
-			const color_hsv_t hsv = { fi * 360.f + t, 1.f, 1.f };
-			const color_t	  col =
-					color_from_packed32(hsv_to_rgba32(hsv));
-			const rdpq_fontstyle_t s = { .color = col };
+			struct color_hsv hsv;
+			color_t		 col;
+			rdpq_fontstyle_t s = { 0 };
+
+			hsv.h	= fi * 360.f + t;
+			hsv.s	= 1.f;
+			hsv.v	= 1.f;
+			col	= color_from_packed32(rgba32_from_hsv(&hsv));
+			s.color = col;
+
 			rdpq_font_style(fnt, 0, &s);
 		} else {
 			rdpq_font_style(fnt, 0, fnt_styles + color_selected);
@@ -356,40 +364,12 @@ cmatrix_buffer_render_to_screen(const char   buf[TEXT_DIM_X * TEXT_DIM_Y],
 
 		rdpq_text_printn(&text_params,
 				 FONT_MAIN,
-				 16,
-				 10 + (i * 16),
+				 16,            /* 38 */
+				 10 + (i * 16), /*  4 */
 				 buf + (i * TEXT_DIM_X),
 				 TEXT_DIM_X);
 	}
 }
-#endif /* #ifndef OVERSCAN_TEST */
-
-#ifdef OVERSCAN_TEST
-static void buffer_init_with_overscan_test(char buf[TEXT_DIM_X * TEXT_DIM_Y])
-{
-	size_t i;
-
-	for (i = 0; i < TEXT_DIM_Y; ++i)
-		memcpy(buf + (i * TEXT_DIM_X), "TESTING!!!!", 12);
-}
-
-static void buffer_render_overscan_test(const char buf[TEXT_DIM_X * TEXT_DIM_Y])
-{
-	size_t i;
-
-	rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
-	rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
-
-	for (i = 0; i < TEXT_DIM_Y; ++i) {
-		rdpq_text_printn(&text_params,
-				 FONT_MAIN,
-				 16,
-				 10 + (i * 16),
-				 buf + (i * TEXT_DIM_X),
-				 TEXT_DIM_X);
-	}
-}
-#endif /* #ifdef OVERSCAN_TEST */
 
 int main(void)
 {
@@ -421,47 +401,28 @@ int main(void)
 
 	memset(text_buf, ' ', sizeof(text_buf));
 
-#ifndef OVERSCAN_TEST
 	streams_array_randomize(streams, sizeof(streams) / sizeof(*streams));
 	updaterate_sec = 1.f / (f32)updaterate;
 
 	/* Generate and verify displaylist */
-#endif /* #ifndef OVERSCAN_TEST */
-
 	cmatrix_render_mode_base_dl = cmatrix_render_mode_base_dl_gen();
-	cmatrix_partial_clear_dl    = cmatrix_partial_clear_dl_gen();
+	cmatrix_partial_clear_dl = cmatrix_partial_clear_dl_gen();
 
-#if defined(_DEBUG) && !defined(OVERSCAN_TEST)
+#ifdef _DEBUG
 	debug_mode_dl = debug_mode_dl_gen();
-#endif /* #if defined(_DEBUG) && !defined(OVERSCAN_TEST) */
+#endif /* #ifndef _DEBUG */
 
 	assertf(cmatrix_render_mode_base_dl,
 		"Failed to generate displaylist for the base render mode");
-#ifndef OVERSCAN_TEST
 	assertf(cmatrix_partial_clear_dl,
 		"Failed to generate displaylist for partially clearing screen");
 #ifdef _DEBUG
 	assertf(debug_mode_dl,
 		"Failed to generate debug mode label displaylist");
 #endif /* #ifdef _DEBUG */
-#endif /* #ifndef OVERSCAN_TEST */
 
 	/* Main loop */
 	for (;;) {
-#ifdef OVERSCAN_TEST
-		bool_t test_buffer_is_init = FALSE;
-
-		if (!test_buffer_is_init) {
-			buffer_init_with_overscan_test(text_buf);
-			test_buffer_is_init = TRUE;
-		}
-
-		rdpq_attach(display_get(), NULL);
-		rspq_block_run(cmatrix_render_mode_base_dl);
-		rspq_block_run(cmatrix_partial_clear_dl);
-		buffer_render_overscan_test(text_buf);
-		rdpq_detach_show();
-#else /* #ifdef OVERSCAN_TEST */
 		static f32 subtick = 0.f;
 		u64	   ticks_old, ticks_new;
 		u32	   i;
@@ -504,11 +465,13 @@ int main(void)
 		 * UPDATING *
 		 ************/
 		for (; time_accum >= tickrate_sec; time_accum -= tickrate_sec) {
-			const f32	 dt	      = tickrate_sec;
 			static f32	 stream_timer = 0.f;
+			f32		 dt;
 			u32		 updaterate_old;
 			s32		 color_selected_old;
 			joypad_buttons_t btn_down;
+
+			dt = tickrate_sec;
 
 #ifdef _DEBUG
 			debug_mode_blink_timer += dt;
@@ -588,13 +551,10 @@ int main(void)
 
 		for (i = 0; i < TEXT_DIM_X; ++i)
 			stream_to_text_buf(text_buf, streams + i, i);
-#endif /* #ifdef OVERSCAN_TEST #else */
 	}
 
 	/* Terminate */
-#ifndef OVERSCAN_TEST
 	rspq_block_free(cmatrix_partial_clear_dl);
-#endif /* #ifndef OVERSCAN_TEST */
 	rspq_block_free(cmatrix_render_mode_base_dl);
 	rdpq_text_unregister_font(FONT_MAIN);
 	rdpq_font_free(fnt);
