@@ -356,7 +356,11 @@ int main(void)
 #endif /* #ifdef _DEBUG */
 
 	dfs_init(DFS_DEFAULT_LOCATION);
+#ifdef HIGH_RES
+	display_init(RESOLUTION_640x480,
+#else /* #ifdef HIGH_RES */
 	display_init(RESOLUTION_320x240,
+#endif /* #ifdef HIGH_RES #else */
 		     DEPTH_16_BPP,
 		     3,
 		     GAMMA_NONE,

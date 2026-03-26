@@ -1,4 +1,5 @@
-DEBUG_MODE ?=
+DEBUG_MODE ?= 1
+HIGH_RES   ?= 1
 
 BUILD_DIR := build
 FS_DIR    := filesystem
@@ -22,6 +23,10 @@ MKSPRITE_FLAGS ?=
 MKFONT_FLAGS ?= --size 12
 
 N64_CFLAGS += -Wall -Wextra -Werror -std=gnu99 -Wdeclaration-after-statement
+
+ifdef HIGH_RES
+	N64_CFLAGS += -DHIGH_RES
+endif
 
 ifdef DEBUG_MODE
 	N64_CFLAGS += -O0 -ggdb3 -D_DEBUG -DDEBUG
