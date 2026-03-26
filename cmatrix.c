@@ -7,11 +7,13 @@
 #define SCREEN_WIDTH  640u
 #define SCREEN_HEIGHT 480u
 
-#define TEXT_START_X 38
-#define TEXT_START_Y 4
+#define TEXT_START_X 46
+#define TEXT_START_Y 18
 
-#define TEXT_DIM_X 82u
-#define TEXT_DIM_Y 29u
+#define TEXT_Y_SPACING 32
+
+#define TEXT_DIM_X 40u
+#define TEXT_DIM_Y 14u
 
 #else /* #ifdef HIGH_RES */
 
@@ -20,6 +22,8 @@
 
 #define TEXT_START_X 16
 #define TEXT_START_Y 10
+
+#define TEXT_Y_SPACING 16
 
 #define TEXT_DIM_X 41u
 #define TEXT_DIM_Y 14u
@@ -57,11 +61,11 @@ static rspq_block_t *cmatrix_partial_clear_dl	 = NULL;
 static u32 updaterate	  = UPDATERATE_DEFAULT;
 static f32 updaterate_sec = 0.f;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(HIGH_RES)
 static rspq_block_t *debug_mode_dl	    = NULL;
 static bool_t	     debug_mode_blink_state = TRUE;
 static f32	     debug_mode_blink_timer = 0.f;
-#endif /* #ifdef _DEBUG */
+#endif /* #if defined(_DEBUG) && !defined(HIGH_RES) */
 
 static const f32 tickrate_sec	    = 1.f / (f32)TICKRATE;
 static f32	 rainbow_timer_prev = 0.f;
@@ -80,6 +84,8 @@ static f32 time_accum = 0.f;
 
 static struct stream streams[TEXT_DIM_X];
 
+/* TODO: Get this working with high resolution mode at some point */
+#ifndef HIGH_RES
 #ifdef _DEBUG
 static rspq_block_t *debug_mode_dl_gen(void)
 {
@@ -112,6 +118,7 @@ static rspq_block_t *debug_mode_dl_gen(void)
 	return rspq_block_end();
 }
 #endif /* #ifdef _DEBUG */
+#endif /* #ifndef HIGH_RES */
 
 static void buf_fill_random(char *buf, const size_t buf_sz)
 {
@@ -167,13 +174,6 @@ static __inline void streams_array_randomize(struct stream *arr,
 
 static void stream_update(struct stream *s)
 {
-	if ((size_t)(s - streams) == (TEXT_DIM_X - 1)) {
-		s->length   = TEXT_DIM_Y;
-		s->progress = 0;
-		memcpy(s->chars, "abcdefghijklmn", TEXT_DIM_Y);
-		return;
-	}
-
 	/*
 	 * Update progress, and if it's not over
 	 * the limit, we're done for this frame.
@@ -371,7 +371,7 @@ cmatrix_buffer_render_to_screen(const char   buf[TEXT_DIM_X * TEXT_DIM_Y],
 		rdpq_text_printn(&text_params,
 				 FONT_MAIN,
 				 TEXT_START_X,
-				 TEXT_START_Y + (i * 16),
+				 TEXT_START_Y + (i * TEXT_Y_SPACING),
 				 buf + (i * TEXT_DIM_X),
 				 TEXT_DIM_X);
 	}
@@ -414,18 +414,18 @@ int main(void)
 	cmatrix_render_mode_base_dl = cmatrix_render_mode_base_dl_gen();
 	cmatrix_partial_clear_dl    = cmatrix_partial_clear_dl_gen();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(HIGH_RES)
 	debug_mode_dl = debug_mode_dl_gen();
-#endif /* #ifndef _DEBUG */
+#endif /* #if defined(_DEBUG) && !defined(HIGH_RES) */
 
 	assertf(cmatrix_render_mode_base_dl,
 		"Failed to generate displaylist for the base render mode");
 	assertf(cmatrix_partial_clear_dl,
 		"Failed to generate displaylist for partially clearing screen");
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(HIGH_RES)
 	assertf(debug_mode_dl,
 		"Failed to generate debug mode label displaylist");
-#endif /* #ifdef _DEBUG */
+#endif /* #if defined(_DEBUG) && !defined(HIGH_RES) */
 
 	/* Main loop */
 	for (;;) {
@@ -454,10 +454,10 @@ int main(void)
 						rainbow_timer_prev,
 						rainbow_timer_curr,
 						subtick);
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(HIGH_RES)
 		if (debug_mode_blink_state)
 			rspq_block_run(debug_mode_dl);
-#endif /* #ifdef _DEBUG */
+#endif /* #if defined(_DEBUG) && !defined(HIGH_RES) */
 
 		rdpq_detach_show();
 
@@ -479,14 +479,14 @@ int main(void)
 
 			dt = tickrate_sec;
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(HIGH_RES)
 			debug_mode_blink_timer += dt;
 			while ((u32)debug_mode_blink_timer) {
 				debug_mode_blink_timer -=
 						(u32)debug_mode_blink_timer;
 				debug_mode_blink_state ^= TRUE;
 			}
-#endif /* #ifdef _DEBUG */
+#endif /* #if defined(_DEBUG) && !defined(HIGH_RES) */
 
 			joypad_poll();
 			btn_down = joypad_get_buttons_pressed(JOYPAD_PORT_1);

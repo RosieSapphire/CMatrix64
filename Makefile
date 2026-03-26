@@ -1,5 +1,5 @@
-DEBUG_MODE ?= 1
-HIGH_RES   ?=
+DEBUG_MODE ?=
+HIGH_RES   ?= 1
 
 BUILD_DIR := build
 FS_DIR    := filesystem
@@ -20,7 +20,12 @@ ASSETS_TTF := $(wildcard assets/*.ttf)
 ASSETS_CONV := $(addprefix $(FS_DIR)/,$(notdir $(ASSETS_TTF:%.ttf=%.font64)))
 
 MKSPRITE_FLAGS ?=
-MKFONT_FLAGS ?= --size 12
+
+ifdef HIGH_RES
+	MKFONT_FLAGS ?= --size 24
+else
+	MKFONT_FLAGS ?= --size 12
+endif
 
 ifdef HIGH_RES
 	N64_CFLAGS += -DHIGH_RES
