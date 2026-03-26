@@ -1,5 +1,5 @@
 DEBUG_MODE ?= 1
-HIGH_RES   ?= 1
+HIGH_RES   ?=
 
 BUILD_DIR := build
 FS_DIR    := filesystem
@@ -22,8 +22,6 @@ ASSETS_CONV := $(addprefix $(FS_DIR)/,$(notdir $(ASSETS_TTF:%.ttf=%.font64)))
 MKSPRITE_FLAGS ?=
 MKFONT_FLAGS ?= --size 12
 
-N64_CFLAGS += -Wall -Wextra -Werror -std=gnu99 -Wdeclaration-after-statement
-
 ifdef HIGH_RES
 	N64_CFLAGS += -DHIGH_RES
 endif
@@ -33,6 +31,9 @@ ifdef DEBUG_MODE
 else
 	N64_CFLAGS += -Os -g0 -DNDEBUG -DRELEASE
 endif
+
+N64_CFLAGS += -Ivendor/rose_petal -Wall -Wextra -Werror \
+	      -std=gnu99 -Wdeclaration-after-statement
 
 all: $(Z64_FILE)
 
