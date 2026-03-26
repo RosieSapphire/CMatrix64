@@ -1,0 +1,3 @@
+[submodule "vendor/rose_petal"]
+	path = vendor/rose_petal
+	url = git@github.com:RosieSapphire/RosePetal.git
