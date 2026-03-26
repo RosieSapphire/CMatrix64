@@ -7,6 +7,9 @@
 #define SCREEN_WIDTH  640u
 #define SCREEN_HEIGHT 480u
 
+#define TEXT_START_X 38
+#define TEXT_START_Y 4
+
 #define TEXT_DIM_X 82u
 #define TEXT_DIM_Y 29u
 
@@ -14,6 +17,9 @@
 
 #define SCREEN_WIDTH  320u
 #define SCREEN_HEIGHT 240u
+
+#define TEXT_START_X 16
+#define TEXT_START_Y 10
 
 #define TEXT_DIM_X 41u
 #define TEXT_DIM_Y 14u
@@ -46,7 +52,7 @@ RP_STATIC_ASSERT((sizeof(text_buf) % TEXT_DIM_X) == 0,
 		 _text_buf_must_be_divisible_by_width);
 
 static rspq_block_t *cmatrix_render_mode_base_dl = NULL;
-static rspq_block_t *cmatrix_partial_clear_dl = NULL;
+static rspq_block_t *cmatrix_partial_clear_dl	 = NULL;
 
 static u32 updaterate	  = UPDATERATE_DEFAULT;
 static f32 updaterate_sec = 0.f;
@@ -364,8 +370,8 @@ cmatrix_buffer_render_to_screen(const char   buf[TEXT_DIM_X * TEXT_DIM_Y],
 
 		rdpq_text_printn(&text_params,
 				 FONT_MAIN,
-				 16,            /* 38 */
-				 10 + (i * 16), /*  4 */
+				 TEXT_START_X,
+				 TEXT_START_Y + (i * 16),
 				 buf + (i * TEXT_DIM_X),
 				 TEXT_DIM_X);
 	}
@@ -406,7 +412,7 @@ int main(void)
 
 	/* Generate and verify displaylist */
 	cmatrix_render_mode_base_dl = cmatrix_render_mode_base_dl_gen();
-	cmatrix_partial_clear_dl = cmatrix_partial_clear_dl_gen();
+	cmatrix_partial_clear_dl    = cmatrix_partial_clear_dl_gen();
 
 #ifdef _DEBUG
 	debug_mode_dl = debug_mode_dl_gen();
