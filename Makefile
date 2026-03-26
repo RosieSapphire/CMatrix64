@@ -1,5 +1,5 @@
 DEBUG_MODE ?=
-HIGH_RES   ?= 1
+HIGH_RES   ?=
 
 BUILD_DIR := build
 FS_DIR    := filesystem
